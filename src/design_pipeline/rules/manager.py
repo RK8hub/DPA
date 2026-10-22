@@ -185,28 +185,36 @@ def build_discovery_questions(analysis: AnalysisResult) -> list[Question]:
     )
 
     adhoc = any(f.kind == "tokens" and f.classification == "proposed" for f in analysis.findings)
+    # La misma decisión no se pregunta dos veces: cuando el hallazgo `adhoc` y
+    # la incertidumbre del análisis cubren el tema de tokens, manda la pregunta
+    # de descubrimiento (valores simples + rationale) y la procedencia anota la
+    # incertidumbre que cubre (issue #2).
+    tokens_uncertainty = next(
+        (u for u in analysis.uncertainties if u.category == "tokens"), None
+    )
     if adhoc:
-        questions.append(
-            Question(
-                id=f"q-{len(questions) + 1:03d}",
-                category="tokens",
-                text="Hay colores literales sin token en el CSS. ¿Qué hacemos?",
-                options=[
-                    {
-                        "value": "conservar",
-                        "label": "Conservar literales (fidelidad estricta)",
-                        "rationale": "No cambia nada visualmente.",
-                    },
-                    {
-                        "value": "unificar",
-                        "label": "Unificar en tokens existentes",
-                        "rationale": "Reduce deriva visual futura, pero altera el CSS de origen (requiere aprobación).",
-                    },
-                ],
-                recommendation="conservar",
-                source="discovery",
-            )
+        tokens_question = Question(
+            id=f"q-{len(questions) + 1:03d}",
+            category="tokens",
+            text="Hay colores literales sin token en el CSS. ¿Qué hacemos?",
+            options=[
+                {
+                    "value": "conservar",
+                    "label": "Conservar literales (fidelidad estricta)",
+                    "rationale": "No cambia nada visualmente.",
+                },
+                {
+                    "value": "unificar",
+                    "label": "Unificar en tokens existentes",
+                    "rationale": "Reduce deriva visual futura, pero altera el CSS de origen (requiere aprobación).",
+                },
+            ],
+            recommendation="conservar",
+            source="discovery",
         )
+        if tokens_uncertainty is not None:
+            tokens_question.source = f"discovery+{tokens_uncertainty.id}"
+        questions.append(tokens_question)
 
     if any(c.interactive for c in analysis.components):
         questions.append(
@@ -278,7 +286,12 @@ def build_discovery_questions(analysis: AnalysisResult) -> list[Question]:
         )
 
     # Preguntas derivadas de las incertidumbres del análisis (procedencia trazable).
+    # Si la decisión ya se preguntó en la rama de descubrimiento (mismo tema,
+    # p. ej. tokens o accesibilidad), no se duplica: issue #2.
+    covered_by_discovery = {question.category for question in questions}
     for uncertainty in analysis.uncertainties:
+        if uncertainty.category in covered_by_discovery:
+            continue
         questions.append(
             Question(
                 id=f"q-{len(questions) + 1:03d}",
@@ -397,38 +410,39 @@ def derive_rules_from_answers(project: Project) -> list[Rule]:
             "css-puro": "Usar CSS puro basado en los archivos del export; no introducir frameworks de utilidades.",
             "tailwind-manual": "La conversión a Tailwind queda como trabajo manual/asistido posterior (pendiente explícito).",
         },
-        "q-tokens-conservar": {
+    }
+    # Las derivaciones por categoría no dependen de ids incrementales (que se
+    # renumeran cuando cambia el análisis) ni de la procedencia de la pregunta:
+    # una pregunta de `tokens` respondida con cualquiera de sus opciones deriva
+    # regla (issue #2).
+    category_templates: dict[str, dict[str, str]] = {
+        "tokens": {
             "conservar": "Conservar los colores y medidas literales del export tal cual (fidelidad estricta).",
+            "unificar": (
+                "Unificar los colores literales del lote en tokens (var(--...)): "
+                "altera el CSS de origen y por eso requiere aprobación explícita."
+            ),
         },
     }
 
-    # Reglas de preguntas base.
-    for question_id, mapping in templates.items():
-        question = questions.get(question_id)
-        if question and question.status == STATUS_ANSWERED and question.answer in mapping:
-            origin = f"answer:{question_id}"
-            if origin in existing_origins:
-                continue
-            created.append(
-                Rule(
-                    id=_next_rule_id(rules + created),
-                    text=mapping[question.answer],
-                    category=question.category,
-                    provenance={"kind": "derived", "origin": origin},
-                )
-            )
-
-    # Reglas derivadas de las preguntas de incertidumbre del análisis.
+    # Toda respuesta registrada deriva en una regla propuesta: primero el texto
+    # concreto de la plantilla (por id o por categoría) y, si no hay, el
+    # registro genérico de la decisión. Nunca se aprueba automáticamente.
     for question in questions.values():
-        if question.status != STATUS_ANSWERED or not question.source.startswith("análisis:"):
+        if question.status != STATUS_ANSWERED or not question.answer:
             continue
         origin = f"answer:{question.id}"
         if origin in existing_origins:
             continue
+        text = (
+            templates.get(question.id, {}).get(question.answer)
+            or category_templates.get(question.category, {}).get(question.answer)
+            or f"{question.text} → Respuesta registrada: {question.answer}"
+        )
         created.append(
             Rule(
                 id=_next_rule_id(rules + created),
-                text=f"{question.text} → Respuesta registrada: {question.answer}",
+                text=text,
                 category=question.category,
                 provenance={"kind": "derived", "origin": origin},
             )

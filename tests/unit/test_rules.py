@@ -202,3 +202,63 @@ def test_q001_sigue_recomendando_astro_sin_componentes_react():
     )
     question = build_discovery_questions(analysis)[0]
     assert question.recommendation == "astro-css"
+
+
+# ---------------------------------------------------------------------------
+# Pregunta de tokens: una sola por decisión y derivación de regla (issue #2)
+# ---------------------------------------------------------------------------
+
+
+def test_pregunta_de_tokens_no_se_duplica(project, analysis):
+    questions = seed_discovery(project, analysis)
+    categories = [question.category for question in questions]
+    # La decisión de tokens se pregunta una sola vez: ni el hallazgo `adhoc` ni
+    # la incertidumbre u-00X generan una pregunta cada uno.
+    assert categories.count("tokens") == 1
+    # Mismo patrón para accesibilidad (idéntica duplicación, misma causa).
+    assert categories.count("accesibilidad") == 1
+
+    tokens_question = next(q for q in questions if q.category == "tokens")
+    assert tokens_question.id == "q-003"
+    assert tokens_question.options[0]["value"] == "conservar"
+    # La procedencia conserva la incertidumbre del análisis que cubre.
+    assert tokens_question.source.startswith("discovery+")
+    assert "u-" in tokens_question.source
+    # Las preguntas trazables al análisis que no se duplican siguen presentes.
+    assert any(q.source.startswith("análisis:") for q in questions)
+    # Idempotente: repetir no agrega ni renumera.
+    assert [q.id for q in seed_discovery(project, analysis)] == [q.id for q in questions]
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_text"),
+    [
+        ("conservar", "Conservar los colores y medidas literales del export tal cual"),
+        ("unificar", "Unificar los colores literales del lote en tokens"),
+    ],
+)
+def test_responder_pregunta_de_tokens_deriva_regla(project, analysis, answer, expected_text):
+    seed_discovery(project, analysis)
+    answer_question(project, "q-003", answer)
+    created = derive_rules_from_answers(project)
+
+    assert len(created) == 1
+    rule = created[0]
+    assert rule.category == "tokens"
+    assert rule.status == RULE_PROPOSED
+    assert rule.provenance == {"kind": "derived", "origin": "answer:q-003"}
+    assert expected_text in rule.text
+    # Opción `unificar` incluida: antes sólo existía la clave muerta
+    # `q-tokens-conservar`, que no coincidía con ninguna pregunta.
+    assert derive_rules_from_answers(project) == []
+
+
+def test_responder_cualquier_pregunta_de_descubrimiento_deriva_regla(project, analysis):
+    questions = seed_discovery(project, analysis)
+    accessibility = next(q for q in questions if q.category == "accesibilidad")
+    answer_question(project, accessibility.id, "reportar")
+
+    created = derive_rules_from_answers(project)
+    assert len(created) == 1
+    assert created[0].category == "accesibilidad"
+    assert created[0].provenance["origin"] == f"answer:{accessibility.id}"

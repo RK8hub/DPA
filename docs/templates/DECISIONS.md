@@ -15,7 +15,7 @@ máquina; editar directamente no tiene efecto (usar los comandos
 ### {{q-001}} ({{categoría — destino, estilos, tokens, interactividad, accesibilidad, reutilizacion, análisis:...}}) — {{open | answered | postponed}}
 
 - Pregunta: {{texto de la pregunta}}
-- Procedencia: {{discovery | archivo-reglas#hash | análisis:<incertidumbre-id>}}
+- Procedencia: {{discovery | discovery+<incertidumbre-id> | archivo-reglas#hash | análisis:<incertidumbre-id>}}
 - Respuesta: `{{valor}}` (registrada {{fecha ISO-8601 UTC}})
 - Opciones: `{{valor1}}`, `{{valor2}}`
 - Recomendación: `{{valor-recomendado}}`
@@ -50,8 +50,8 @@ máquina; editar directamente no tiene efecto (usar los comandos
 <!-- Notas de lectura:
      - state.decisions_pending refleja las preguntas open y las reglas
        proposed: lo ves en `status` y en el CONTEXT.md.
-     - Solo algunas preguntas derivan reglas automáticamente al responderlas
-       (q-001, q-002 y las derivadas del análisis); el resto queda como
-       respuesta registrada acá.
+     - Toda pregunta respondida deriva una regla `proposed` con procedencia
+       `answer:<id>`; la regla recién se aplica si el usuario la aprueba con
+       `rules approve`. Acá queda la respuesta y su trazabilidad.
      - "Procedencia" es la cadena de trazabilidad: hallazgo → pregunta →
        respuesta → regla. -->
