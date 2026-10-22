@@ -20,7 +20,7 @@ from typing import Any
 
 import yaml
 
-from design_pipeline.analysis.analyzer import AnalysisResult
+from design_pipeline.analysis.analyzer import AnalysisResult, ComponentInfo
 from design_pipeline.errors import DesignPipelineError
 from design_pipeline.utils import atomic_write_text, iso_now, sha256_text, write_json
 from design_pipeline.workspace.project import Project
@@ -110,10 +110,35 @@ def save_rules(project: Project, rules: list[Rule]) -> None:
 # Preguntas de descubrimiento (generadas desde el análisis)
 # ---------------------------------------------------------------------------
 
+_REACT_EXTENSIONS = (".tsx", ".jsx")
+_REACT_PACKAGES = {"react", "react-dom", "preact"}
+
+
+def is_react_component(component: ComponentInfo) -> bool:
+    """¿El componente es de React?
+
+    Dos señales, en este orden:
+
+    1. **Extensión JSX/TSX**: `.tsx` **y** `.jsx` son JSX de React. Una
+       exportación 100% `.jsx` (el caso más común de Figma/FigCraft) ya es
+       React: recomendar `astro-css` obligaría a una conversión adicional
+       (issue #5).
+    2. **Evidencia en el contenido**: import desde `react`/`preact` o hooks
+       `use*`, para archivos con otras extensiones donde la extensión no
+       alcanza para decidir.
+    """
+    if component.path.endswith(_REACT_EXTENSIONS):
+        return True
+    for importer in component.package_imports:
+        if importer.split("/")[0] in _REACT_PACKAGES:
+            return True
+    return bool(component.hooks)
+
+
 def build_discovery_questions(analysis: AnalysisResult) -> list[Question]:
     """Preguntas concretas y priorizadas; cada una con opciones y recomendación."""
     questions: list[Question] = []
-    react_count = sum(1 for c in analysis.components if any(p.endswith(".tsx") for p in [c.path]))
+    react_count = sum(1 for c in analysis.components if is_react_component(c))
     framework_rec = "react-css" if react_count >= len(analysis.components) / 2 else "astro-css"
 
     questions.append(

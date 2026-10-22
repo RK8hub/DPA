@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from design_pipeline.analysis.analyzer import analyze_batch
+from design_pipeline.analysis.analyzer import AnalysisResult, ComponentInfo, analyze_batch
 from design_pipeline.config import load_config
 from design_pipeline.errors import DesignPipelineError
 from design_pipeline.importers.inventory import build_inventory
@@ -20,6 +20,7 @@ from design_pipeline.rules.manager import (
     derive_rules_from_answers,
     approved_rules,
     import_rules_file,
+    is_react_component,
     load_questions,
     load_rules,
     pending_rules,
@@ -140,3 +141,64 @@ def test_import_rules_file_markdown_con_approve(project, tmp_path: Path):
 def test_import_rules_file_inexistente(project, tmp_path: Path):
     with pytest.raises(DesignPipelineError):
         import_rules_file(project, tmp_path / "no-existe.yaml")
+
+
+# ---------------------------------------------------------------------------
+# q-001: recomendación de destino con exportaciones .jsx (issue #5)
+# ---------------------------------------------------------------------------
+
+
+def _jsx_export(tmp_path: Path) -> Path:
+    """Exportación 100% `.jsx` (el caso más común de Figma/FigCraft)."""
+    src = tmp_path / "export-jsx"
+    src.mkdir()
+    for name in ("CardEquipment", "CardOperator", "InfoCards", "WrapperActions"):
+        (src / f"{name}.jsx").write_text(
+            f'import "./{name.lower()}.css";\n\n'
+            f'export function {name}({{ title = "Título" }}) {{\n'
+            '  return <div className="card">{title}</div>;\n}\n',
+            encoding="utf-8",
+        )
+    return src
+
+
+def test_q001_recomienda_react_para_lote_solo_jsx(tmp_path: Path):
+    export = _jsx_export(tmp_path)
+    inventory = build_inventory(export, TEXT_EXT, [], 1024 * 1024)
+    analysis = analyze_batch(inventory, export)
+    assert len(analysis.components) == 4
+    assert all(component.path.endswith(".jsx") for component in analysis.components)
+
+    question = build_discovery_questions(analysis)[0]
+    assert question.id == "q-001"
+    # El rationale de react-css describe textualmente este lote: recomendar
+    # astro-css obligaría a una conversión además de la fidelidad.
+    assert question.recommendation == "react-css"
+
+
+def test_is_react_component_extension_y_contenido():
+    # Extensión JSX/TSX basta (ambas son JSX de React).
+    assert is_react_component(ComponentInfo(name="Card", path="Card.jsx"))
+    assert is_react_component(ComponentInfo(name="Card", path="Card.tsx"))
+    # Otras extensiones: se decide por evidencia en el contenido.
+    assert is_react_component(
+        ComponentInfo(name="Legacy", path="legacy.js", package_imports=["react"])
+    )
+    assert is_react_component(
+        ComponentInfo(name="Legacy", path="legacy.js", hooks=["useState"])
+    )
+    # Sin señales de React: la extensión decide, no la etiqueta.
+    assert not is_react_component(
+        ComponentInfo(name="Astro", path="Astro.astro", package_imports=["@scope/pkg"])
+    )
+    assert not is_react_component(ComponentInfo(name="Astro", path="Astro.astro"))
+
+
+def test_q001_sigue_recomendando_astro_sin_componentes_react():
+    analysis = AnalysisResult(
+        created_at="2026-01-01T00:00:00Z",
+        inventory_fingerprint="abc",
+        components=[ComponentInfo(name="Hero", path="Hero.astro")],
+    )
+    question = build_discovery_questions(analysis)[0]
+    assert question.recommendation == "astro-css"
