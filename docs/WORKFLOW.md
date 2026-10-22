@@ -84,7 +84,10 @@ Dos modos (`rules init`):
   Genera preguntas concretas con opciones y recomendación (perfil de destino,
   enfoque de estilos, tokens, interactividad, accesibilidad, duplicaciones y
   las derivadas de `reports/uncertainties.md`). Idempotente: no duplica
-  preguntas existentes.
+  preguntas existentes **ni toca sus respuestas**, y cuando el análisis cambia
+  (re-import o `resume` con nueva fuente) **agrega** las preguntas que falten,
+  renumerando ids si hiciera falta y refrescando el texto/opciones de las que
+  todavía están `open`.
 - **Guiado** (`--mode guided`): **requiere `--rules-file`** con YAML (clave
   `rules:`) o Markdown (viñetas `- regla`). Cada regla entra como `proposed`,
   salvo que se pase `--approve`, que aprueba **las reglas importadas en esa

@@ -210,7 +210,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
 
 def cmd_rules_init(args: argparse.Namespace) -> int:
     project, pipeline = _open_project(args)
-    from design_pipeline.rules.manager import import_rules_file, seed_discovery
+    from design_pipeline.rules.manager import (
+        import_rules_file,
+        load_questions,
+        seed_discovery,
+    )
 
     handle = pipeline.begin("rules")
     try:
@@ -230,9 +234,20 @@ def cmd_rules_init(args: argparse.Namespace) -> int:
                 raise DesignPipelineError(
                     "El modo descubrimiento requiere la etapa analyze previa."
                 )
+            existing_ids = {question.id for question in load_questions(project)}
             analysis = load_analysis(project)
             questions = seed_discovery(project, analysis)
-            detail = f"{len(questions)} preguntas de descubrimiento generadas"
+            new_ids = [q.id for q in questions if q.id not in existing_ids]
+            if not existing_ids:
+                detail = f"{len(questions)} preguntas de descubrimiento generadas"
+            elif new_ids:
+                noun = "nueva" if len(new_ids) == 1 else "nuevas"
+                detail = (
+                    f"{len(questions)} preguntas de descubrimiento "
+                    f"({len(new_ids)} {noun}: {', '.join(new_ids)})"
+                )
+            else:
+                detail = f"{len(questions)} preguntas de descubrimiento (sin cambios)"
     except DesignPipelineError as exc:
         pipeline.fail(handle, str(exc))
         raise
