@@ -240,11 +240,13 @@ Estas limitaciones son reales y están declaradas también en los informes:
   Detalle en `docs/AGENT-ADAPTERS.md`.
 - **Skills externas nunca se ejecutan.** Se importan como archivos y hashes;
   los scripts declarados solo se muestran para inspección.
-- **Reglas derivadas parciales.** De las preguntas de descubrimiento solo
-  `q-001` (perfil), `q-002` (estilos) y las derivadas del análisis generan
-  reglas automáticamente al responderlas; el resto de las decisiones queda como
-  pregunta respondida en `DECISIONS.md` o requiere reglas guiadas
-  (`rules init --mode guided --rules-file ...`).
+- **Reglas derivadas siguen propuestas.** Toda pregunta respondida (modo
+  descubrimiento o derivada del análisis) genera automáticamente una regla
+  `proposed` con procedencia `answer:<id>`: con texto concreto para destino
+  (`q-001`), estilos (`q-002`) y tokens (por categoría), y con registro
+  genérico de la decisión para el resto. Nada se aplica sin `rules approve`
+  del usuario; para decisiones que no nacen de una pregunta sigue existiendo
+  el modo guiado (`rules init --mode guided --rules-file ...`).
 - **No hay sandbox de procesos.** La ejecución externa se limita por permisos
   explícitos, redacción y timeouts, no por aislamiento del sistema operativo
   (ver `docs/SECURITY.md`).

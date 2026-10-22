@@ -113,11 +113,16 @@ Complementos:
     aplicada");
   - las respuestas y aprobaciones son el único camino para que algo quede
     registrado como decisión humana.
-- **Limitación verificada:** de las preguntas de descubrimiento solo `q-001`
-  (perfil), `q-002` (estilos) y las con `source` `análisis:...` derivan en
-  reglas automáticamente; las demás quedan como respuesta registrada en
-  `DECISIONS.md` y, si hace falta una regla, hay que cargarla con el modo
-  guiado.
+- **Derivación de reglas:** toda pregunta respondida deriva una regla
+  `proposed` con procedencia `answer:<id>`: `q-001` (perfil), `q-002`
+  (estilos) y la de `tokens` usan textos concretos (plantilla por id o por
+  categoría, con la opción `unificar` incluida); el resto registra la decisión
+  con un texto genérico. Ninguna se aplica sin `rules approve`.
+- **Cada decisión se pregunta una sola vez:** si el hallazgo `adhoc` y la
+  incertidumbre del análisis cubren el mismo tema (p. ej. tokens y
+  accesibilidad), se emite **una** pregunta —la de descubrimiento, con valores
+  simples y rationale— y la procedencia anota la incertidumbre que cubre
+  (`discovery+u-00X`).
 - **Reanudación:** requiere `import` `done` a nivel de motor; el modo
   descubrimiento falla con mensaje accionable si `analyze` no corrió (y
   `resume` la hará correr antes si está pendiente). Las preguntas `open` no
