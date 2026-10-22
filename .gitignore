@@ -1,0 +1,21 @@
+# Entornos virtuales y artefactos de build
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Artefactos de usuario generados dentro del repo
+workspace/*
+!workspace/.gitkeep
+
+# Cobertura y test runners
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editores y sistema
+.DS_Store
+*.swp

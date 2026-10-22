@@ -1,0 +1,1 @@
+"""Especificación intermedia de componentes."""

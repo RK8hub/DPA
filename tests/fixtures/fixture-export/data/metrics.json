@@ -1,0 +1,8 @@
+{
+  "metrics": [
+    { "id": "uptime", "label": "Disponibilidad", "value": 99.95, "unit": "%" },
+    { "id": "latency", "label": "Latencia p95", "value": 182, "unit": "ms" },
+    { "id": "errors", "label": "Errores 5xx", "value": 3, "unit": "/h" }
+  ],
+  "updatedAt": "2026-10-20T12:00:00Z"
+}

@@ -1,0 +1,33 @@
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-4);
+  background: var(--color-neutral-100);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.stat__label {
+  font-size: var(--text-sm);
+  color: #6b7686;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat__value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--color-neutral-700);
+}
+
+.stat__unit {
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: #6b7686;
+}
+
+.stat__hint {
+  font-size: 13px;
+  color: var(--color-danger-600);
+}

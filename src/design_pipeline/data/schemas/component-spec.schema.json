@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Especificación intermedia de componente",
+  "description": "Representación independiente del framework de un componente exportado. Generada por la etapa E de design-pipeline.",
+  "type": "object",
+  "required": ["schema_version", "name", "source", "props", "structure", "dependencies", "fidelity_constraints"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "type": "integer", "enum": [1] },
+    "name": { "type": "string", "pattern": "^[A-Z]" },
+    "source": {
+      "type": "object",
+      "required": ["path", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "properties": {
+        "purpose": { "type": "string" },
+        "classification": { "type": "string", "enum": ["observed", "inferred"] },
+        "export_default": { "type": "boolean" }
+      }
+    },
+    "props": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "optional": { "type": "boolean" },
+          "default": { "type": "string" },
+          "provenance": { "type": "string", "enum": ["observed", "inferred"] }
+        }
+      }
+    },
+    "states": { "type": "array", "items": { "type": "string" } },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["prop", "values"],
+        "properties": {
+          "prop": { "type": "string" },
+          "values": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "provenance": { "type": "string", "enum": ["observed", "inferred"] }
+        }
+      }
+    },
+    "structure": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tag"],
+        "properties": {
+          "tag": { "type": "string" },
+          "depth": { "type": "integer" },
+          "classes": { "type": "array", "items": { "type": "string" } },
+          "children_text": { "type": "boolean" }
+        }
+      }
+    },
+    "tokens_used": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["class", "declarations"],
+        "properties": {
+          "class": { "type": "string" },
+          "declarations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["property", "value"],
+              "properties": {
+                "property": { "type": "string" },
+                "value": { "type": "string" },
+                "media": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "local": { "type": "array", "items": { "type": "string" } },
+        "packages": { "type": "array", "items": { "type": "string" } },
+        "assets": { "type": "array", "items": { "type": "string" } },
+        "stylesheets": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "responsive": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["condition", "classes"],
+        "properties": {
+          "condition": { "type": "string" },
+          "classes": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "interactions": { "type": "array", "items": { "type": "string" } },
+    "accessibility": { "type": "array", "items": { "type": "string" } },
+    "fidelity_constraints": { "type": "array", "items": { "type": "string" } },
+    "related": { "type": "array", "items": { "type": "string" } },
+    "applied_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "text": { "type": "string" }
+        }
+      }
+    },
+    "open_questions": { "type": "array", "items": { "type": "string" } },
+    "limitations": { "type": "array", "items": { "type": "string" } }
+  }
+}

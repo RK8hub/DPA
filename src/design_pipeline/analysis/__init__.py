@@ -1,0 +1,1 @@
+"""Análisis determinista del lote."""

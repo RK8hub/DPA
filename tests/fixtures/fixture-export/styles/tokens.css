@@ -1,0 +1,17 @@
+:root {
+  --color-brand-600: #2f6feb;
+  --color-brand-700: #1f57c4;
+  --color-neutral-0: #ffffff;
+  --color-neutral-100: #f5f7fa;
+  --color-neutral-700: #3d4a5c;
+  --color-danger-600: #d13c3c;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --radius-md: 8px;
+  --text-sm: 14px;
+  --text-md: 16px;
+}

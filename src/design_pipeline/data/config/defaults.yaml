@@ -1,0 +1,80 @@
+# Configuración por defecto de design-pipeline.
+# Prioridad de fusión: defaults < ~/.config/design-pipeline/config.yaml < config del proyecto < flags CLI.
+
+schema_version: 1
+
+# Raíz del workspace. Relativa al directorio de trabajo; se puede sobrescribir
+# con --workspace o con la variable de entorno DESIGN_PIPELINE_WORKSPACE.
+workspace_root: ./workspace
+
+# Exclusiones aplicadas al inventariar una exportación (nombre o glob).
+exclusions:
+  - ".git"
+  - "node_modules"
+  - "dist"
+  - "build"
+  - ".next"
+  - ".nuxt"
+  - ".cache"
+  - ".turbo"
+  - "coverage"
+  - "__pycache__"
+  - ".DS_Store"
+  - "*.lock"
+  - "*.min.js"
+  - "*.min.css"
+  - ".env"
+  - ".env.*"
+  - "*.pem"
+  - "id_rsa*"
+  - "credentials*"
+  - "secrets*"
+
+# Archivos más grandes que este tamaño se registran pero no se analizan.
+max_file_size_mb: 5
+
+# Extensiones tratadas como texto (se analizan referencias e imports).
+text_extensions:
+  - ".jsx"
+  - ".tsx"
+  - ".js"
+  - ".ts"
+  - ".mjs"
+  - ".cjs"
+  - ".css"
+  - ".scss"
+  - ".json"
+  - ".svg"
+  - ".md"
+  - ".html"
+  - ".txt"
+  - ".yml"
+  - ".yaml"
+
+agent:
+  # Ejecutar CLIs externas requiere permiso explícito acá y --allow-execution en el CLI.
+  allow_execution: false
+  # Plantillas de adaptadores genéricos. Ejemplo documentado (no ejecutado por defecto):
+  # adapters:
+  #   mi-agente:
+  #     command: ["mi-agente", "--prompt-file", "{prompt_file}"]
+  #     detection: "mi-agente"
+  adapters: {}
+
+skills:
+  # Directorio global de skills externas. null => ~/.config/design-pipeline/skills
+  global_dir: null
+  # Habilitar skills con mode: executive exige permiso acá (aun así nunca ejecutan scripts solas).
+  allow_executive: false
+
+generation:
+  default_profile: react-css
+
+validation:
+  viewports: [375, 768, 1280]
+  # Correr comandos externos (build/lint) requiere permiso acá y --approve-external en el CLI.
+  approve_external_commands: false
+
+reporting:
+  # Cuántas ejecuciones conservar en state.yaml antes de archivarlas en runs/.
+  keep_runs: 20
