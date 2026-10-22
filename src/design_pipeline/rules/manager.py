@@ -598,13 +598,98 @@ def render_rules_reports(project: Project) -> None:
     atomic_write_text(project.paths.reports_dir / "DESIGN-RULES.md", "\n".join(rules_lines))
 
 
+def _normalized_text(text: str) -> str:
+    return " ".join(text.lower().split())
+
+
+def _next_question_id(questions: list[Question]) -> str:
+    """Primer id numérico libre (`q-00N`); ignora ids no numéricos."""
+    numbers = []
+    for question in questions:
+        match = re.fullmatch(r"q-(\d+)", question.id)
+        if match:
+            numbers.append(int(match.group(1)))
+    return f"q-{(max(numbers) + 1 if numbers else 1):03d}"
+
+
+def _merge_discovery(
+    existing: list[Question], fresh: list[Question]
+) -> tuple[list[Question], int, bool]:
+    """Completa las preguntas existentes con las del análisis actual.
+
+    Identidad de pregunta por dos claves (cualquiera sirve): la procedencia
+    ``(categoría, source)`` y el texto ``(categoría, texto normalizado)``.
+    Así se conservan las respuestas aunque las incertidumbres se renumeren
+    (`u-001` → `u-002`) o cambie la redacción, y se agregan sólo las
+    decisiones que el análisis nuevo trae.
+
+    Devuelve (preguntas, cantidad_de_nuevas, hubo_cambios).
+    """
+    by_source = {(q.category, q.source): q for q in existing}
+    by_text = {(q.category, _normalized_text(q.text)): q for q in existing}
+    matched_ids: set[str] = set()
+    taken_ids = {q.id for q in existing}
+    merged: list[Question] = list(existing)
+    added = 0
+    changed = False
+
+    def _match(question: Question) -> Question | None:
+        for index in (
+            by_source.get((question.category, question.source)),
+            by_text.get((question.category, _normalized_text(question.text))),
+        ):
+            if index is not None and index.id not in matched_ids:
+                return index
+        return None
+
+    for question in fresh:
+        match = _match(question)
+        if match is not None:
+            matched_ids.add(match.id)
+            # Las preguntas todavía sin respuesta se refrescan con el análisis
+            # actual (texto, opciones y recomendación pueden cambiar).
+            if match.status == STATUS_OPEN and (
+                match.text != question.text
+                or match.options != question.options
+                or match.recommendation != question.recommendation
+                or match.source != question.source
+            ):
+                match.text = question.text
+                match.options = question.options
+                match.recommendation = question.recommendation
+                match.source = question.source
+                changed = True
+            continue
+        if question.id in taken_ids:
+            question.id = _next_question_id(merged)
+        taken_ids.add(question.id)
+        merged.append(question)
+        added += 1
+        changed = True
+    return merged, added, changed
+
+
 def seed_discovery(project: Project, analysis: AnalysisResult) -> list[Question]:
-    """Crea las preguntas de descubrimiento (idempotente: no duplica existentes)."""
+    """Crea o **completa** las preguntas de descubrimiento.
+
+    Idempotente por identidad de pregunta: no duplica las existentes ni toca
+    sus respuestas, pero sí agrega las que falten cuando el análisis cambió
+    (re-import o `resume` con nueva fuente → nuevas incertidumbres, issue #3)
+    y refresca las preguntas todavía `open` con el análisis actual.
+    """
     existing = load_questions(project)
-    if existing:
-        return existing
-    questions = build_discovery_questions(analysis)
-    save_questions(project, questions)
-    _sync_pending(project, load_rules(project), questions)
-    render_rules_reports(project)
+    if not existing:
+        questions = build_discovery_questions(analysis)
+        save_questions(project, questions)
+        _sync_pending(project, load_rules(project), questions)
+        render_rules_reports(project)
+        return questions
+
+    questions, _added, changed = _merge_discovery(
+        existing, build_discovery_questions(analysis)
+    )
+    if changed:
+        save_questions(project, questions)
+        _sync_pending(project, load_rules(project), questions)
+        render_rules_reports(project)
     return questions

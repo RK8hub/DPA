@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from design_pipeline.analysis.analyzer import AnalysisResult, ComponentInfo, analyze_batch
+from design_pipeline.analysis.analyzer import (
+    AnalysisResult,
+    ComponentInfo,
+    Uncertainty,
+    analyze_batch,
+)
 from design_pipeline.config import load_config
 from design_pipeline.errors import DesignPipelineError
 from design_pipeline.importers.inventory import build_inventory
@@ -262,3 +267,104 @@ def test_responder_cualquier_pregunta_de_descubrimiento_deriva_regla(project, an
     assert len(created) == 1
     assert created[0].category == "accesibilidad"
     assert created[0].provenance["origin"] == f"answer:{accessibility.id}"
+
+
+# ---------------------------------------------------------------------------
+# seed_discovery incremental: el análisis cambió → se agregan preguntas (#3)
+# ---------------------------------------------------------------------------
+
+
+def _card_export(directory: Path, stylesheet: bool) -> Path:
+    directory.mkdir(parents=True, exist_ok=True)
+    css_import = 'import "./Card.css";\n\n' if stylesheet else ""
+    (directory / "Card.jsx").write_text(
+        css_import
+        + 'export function Card({ title = "Título" }) {\n'
+        '  return <div className="card">{title}</div>;\n}\n',
+        encoding="utf-8",
+    )
+    if stylesheet:
+        (directory / "Card.css").write_text(
+            ":root { --card-bg: #ffffff; }\n"
+            ".card { background: #f7f8fa; color: #6b7686; border: 1px solid #e3e8f0; }\n",
+            encoding="utf-8",
+        )
+    return directory
+
+
+def test_seed_discovery_agrega_preguntas_cuando_el_analisis_cambia(project, tmp_path: Path):
+    # 1ª importación: sin hojas de estilo → sólo q-001 y q-002.
+    bare = _card_export(tmp_path / "export-bare", stylesheet=False)
+    old = analyze_batch(build_inventory(bare, TEXT_EXT, [], 1024 * 1024), bare)
+    questions = seed_discovery(project, old)
+    assert {q.id for q in questions} == {"q-001", "q-002"}
+    answer_question(project, "q-001", "react-css")
+
+    # 2ª importación corregida: ahora hay `.css` con colores literales → el
+    # análisis nuevo trae el hallazgo `tokens` y su incertidumbre.
+    full = _card_export(tmp_path / "export-full", stylesheet=True)
+    new = analyze_batch(build_inventory(full, TEXT_EXT, [], 1024 * 1024), full)
+    assert any(u.category == "tokens" for u in new.uncertainties)
+
+    questions = seed_discovery(project, new)
+    assert [q.category for q in questions].count("tokens") == 1
+    assert len(questions) == 3
+    # Las preguntas previas conservan id, texto y — sobre todo — la respuesta.
+    assert len({q.id for q in questions}) == len(questions)
+    assert next(q for q in questions if q.id == "q-001").answer == "react-css"
+    # La nueva decisión queda registrada en DECISIONS.md.
+    decisions = (project.paths.reports_dir / "DECISIONS.md").read_text(encoding="utf-8")
+    assert "tokens" in decisions
+    # Volver a correrlo sin cambios no agrega nada.
+    assert len(seed_discovery(project, new)) == 3
+
+
+def test_seed_discovery_conserva_respuestas_con_incertidumbres_renumeradas(project):
+    """Las u-00X se renumeran al cambiar el análisis: la identidad es la decisión."""
+    variantes = Uncertainty(
+        id="u-001",
+        question="¿Qué valores pueden tomar las clases dinámicas de `Card`?",
+        source="Card.jsx",
+        category="variantes",
+        options=["Conservar sólo las variantes observadas en el CSS"],
+        recommendation="Conservar las variantes observadas.",
+    )
+    old = AnalysisResult(
+        created_at="2026-01-01T00:00:00Z",
+        inventory_fingerprint="a",
+        components=[ComponentInfo(name="Card", path="Card.jsx", dynamic_classes=True)],
+        uncertainties=[variantes],
+    )
+    questions = seed_discovery(project, old)
+    variantes_question = next(q for q in questions if q.category == "análisis:variantes")
+    answer_question(project, variantes_question.id, "conservar-solo-las-variantes-observadas-en-el-css")
+
+    # Análisis nuevo: aparece una incertidumbre de tokens antes → la de
+    # variantes pasa a ser u-002 y su id de pregunta competiría con u-001.
+    new = AnalysisResult(
+        created_at="2026-01-02T00:00:00Z",
+        inventory_fingerprint="b",
+        components=[ComponentInfo(name="Card", path="Card.jsx", dynamic_classes=True)],
+        uncertainties=[
+            Uncertainty(
+                id="u-001",
+                question="¿Unificar los colores literales en tokens o conservarlos tal cual (fidelidad estricta)?",
+                source="hojas de estilo del lote",
+                category="tokens",
+                options=["Conservar literales (fidelidad estricta)"],
+                recommendation="Conservar literales por defecto.",
+            ),
+            Uncertainty(**{**variantes.to_dict(), "id": "u-002"}),
+        ],
+    )
+    questions = seed_discovery(project, new)
+    ids = [q.id for q in questions]
+    assert len(ids) == len(set(ids))  # sin colisión de ids al renumerar
+    assert len(questions) == 4  # q-001, q-002 + tokens nueva + variantes conservada
+    # La respuesta previa sigue atada a la misma decisión, con el id original.
+    kept = next(q for q in questions if q.category == "análisis:variantes")
+    assert kept.answer == "conservar-solo-las-variantes-observadas-en-el-css"
+    assert kept.id == variantes_question.id
+    # La decisión nueva (tokens) entra como pregunta abierta.
+    fresh = next(q for q in questions if q.category == "análisis:tokens")
+    assert fresh.status == STATUS_OPEN

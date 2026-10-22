@@ -109,7 +109,7 @@ def _run_rules(project: Project, pipeline: Pipeline, options: dict[str, Any]) ->
             "reports/DECISIONS.md",
         ],
         notes=[f"preguntas: {len(questions)}"],
-        summary=[f"- Reglas: {len(questions)} preguntas de descubrimiento generadas."],
+        summary=[f"- Reglas: {len(questions)} preguntas de descubrimiento registradas."],
         payload={"questions": len(questions)},
     )
 
