@@ -119,3 +119,53 @@ def test_analisis_no_afirma_intercambiability(fixture_export: Path):
     result = _analyze(fixture_export)
     for dup in result.duplications:
         assert dup["status"] == "needs_review"
+
+
+# ---------------------------------------------------------------------------
+# CSS embebido al final de los componentes (issue #1)
+# ---------------------------------------------------------------------------
+
+EMBEDDED_FIXTURE = (
+    Path(__file__).resolve().parent.parent / "fixtures" / "fixture-embedded-css"
+)
+
+
+def test_inventario_no_marca_como_roto_el_css_embebido():
+    inv = build_inventory(EMBEDDED_FIXTURE, TEXT_EXT, [], 1024 * 1024)
+    broken_refs = {item["ref"] for item in inv.broken_references}
+    # Panel/Toolbar resuelven por su bloque embebido; Broken no pudo separarse.
+    assert "./panel.css" not in broken_refs
+    assert "./toolbar.css" not in broken_refs
+    assert "./broken.css" in broken_refs
+    assert {item["resolved"] for item in inv.embedded_stylesheets} == {
+        "panel.css",
+        "toolbar.css",
+    }
+    assert inv.stats["embedded_stylesheets"] == 2
+
+
+def test_analiza_el_css_embebido_como_hoja_de_estilo():
+    inv = build_inventory(EMBEDDED_FIXTURE, TEXT_EXT, [], 1024 * 1024)
+    result = analyze_batch(inv, EMBEDDED_FIXTURE)
+
+    # Las hojas embebidas se cuentan y parsean (antes: 0 hojas de estilo).
+    paths = {css.path for css in result.stylesheets}
+    assert {"panel.css", "toolbar.css"} <= paths
+    panel = next(css for css in result.stylesheets if css.path == "panel.css")
+    assert "panel" in panel.class_selectors
+    assert "#101828" in panel.colors
+
+    # Hallazgo de procedencia con marcador y línea.
+    extracted = [f for f in result.findings if "CSS embebido extraído" in f.message]
+    assert any("`Panel.jsx`" in f.message and "`/* panel.css */`" in f.message for f in extracted)
+    assert any("`Toolbar.jsx`" in f.message for f in extracted)
+
+    # Los colores literales sin token disparan la propuesta y su incertidumbre.
+    assert any(
+        f.kind == "tokens" and f.classification == "proposed" for f in result.findings
+    )
+    assert any(u.category == "tokens" for u in result.uncertainties)
+
+    # La limitación sigue siendo explícita para lo que no se pudo separar.
+    assert any("Posible CSS sin separar en `Broken.jsx`" in item for item in result.limitations)
+

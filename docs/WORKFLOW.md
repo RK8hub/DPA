@@ -52,7 +52,11 @@ Estados posibles por etapa: `pending`, `in_progress`, `done`, `failed`,
   analizados), clasifica por categoría, calcula `sha256` por archivo y la huella
   del árbol (`source_fingerprint`), detecta duplicados exactos, referencias
   locales rotas, referencias externas (paquetes/URLs) y archivos no
-  analizados. **Nunca escribe dentro de la fuente ni ejecuta nada.**
+  analizados. Además detecta **CSS embebido** al final de un componente tras
+  un marcador `/* nombre.css */`: en ese caso el `import` del CSS **no** se
+  reporta como referencia rota y la hoja queda registrada en
+  `embedded_stylesheets` (`importers/embedded_css.py`). **Nunca escribe dentro
+  de la fuente ni ejecuta nada.**
 - **Salidas:** `inventory.json`, `reports/IMPORT-REPORT.md`; registra
   `source.path` en `project.yaml` y `source_path` en `state.yaml`.
 - **Puertas de aprobación:** ninguna (es lectura y registro).
@@ -64,7 +68,10 @@ Estados posibles por etapa: `pending`, `in_progress`, `done`, `failed`,
 
 - **Entrada:** `inventory.json` + la fuente en disco.
 - **Acciones:** `analysis.analyzer.analyze_batch` detecta componentes
-  (JSX/TSX), props, estados, variantes, relaciones, hojas de estilo, tokens
+  (JSX/TSX), props, estados, variantes, relaciones, hojas de estilo (incluido
+  el **CSS embebido** al final de un componente: se analiza como hoja virtual
+  con hallazgo de procedencia, y si no se puede confirmar queda como
+  limitación `NEEDS_REVIEW`), tokens
   (custom properties), accesibilidad (heurísticas `alt`/teclado), duplicaciones
   aparentes, assets sin referenciar, incertidumbres y limitaciones. Cada
   hallazgo queda clasificado: `observed` (Observado), `inferred` (Inferido),

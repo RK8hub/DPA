@@ -14,6 +14,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from design_pipeline.importers.embedded_css import (
+    find_embedded_stylesheets,
+    find_suspicious_css_tail,
+)
 from design_pipeline.importers.inventory import FileEntry, Inventory
 
 CLASSIFICATION_OBSERVED = "observed"
@@ -491,11 +495,51 @@ def analyze_batch(inventory: Inventory, root: Path) -> AnalysisResult:
                 )
             )
 
-    # Hojas de estilo.
+    # Hojas de estilo: archivos .css del lote + CSS embebido al final de
+    # componentes (issue #1: el CSS tras un marcador `/* nombre.css */` se
+    # analiza como hoja de estilo virtual, no como referencia rota).
+    stylesheet_sources: list[tuple[str, str]] = [
+        (entry.path, texts.get(entry.path, ""))
+        for entry in inventory.files
+        if entry.category == "style"
+    ]
     for entry in inventory.files:
-        if entry.category != "style":
+        if entry.category != "component":
             continue
-        css = parse_css(entry.path, texts.get(entry.path, ""))
+        text = texts.get(entry.path, "")
+        if not text:
+            continue
+        for embedded in find_embedded_stylesheets(entry.path, text):
+            known_paths = {path for path, _ in stylesheet_sources}
+            if embedded.resolved in known_paths:
+                continue  # ya cubierto (archivo real u otro componente): manda ese
+            stylesheet_sources.append((embedded.resolved, embedded.css))
+            result.findings.append(
+                Finding(
+                    kind="estilos",
+                    classification=CLASSIFICATION_OBSERVED,
+                    message=(
+                        f"CSS embebido extraído de `{entry.path}` "
+                        f"(marcador `/* {embedded.ref} */`, línea {embedded.marker_line}) "
+                        f"→ hoja virtual `{embedded.resolved}`"
+                    ),
+                    source=entry.path,
+                    justification=(
+                        "el import del CSS no resuelve a un archivo; el bloque al final "
+                        "del componente es CSS puro y se analiza como hoja de estilo"
+                    ),
+                )
+            )
+        suspicious = find_suspicious_css_tail(text)
+        if suspicious is not None:
+            result.limitations.append(
+                f"Posible CSS sin separar en `{entry.path}` (marcador "
+                f"`/* {suspicious.ref} */`, línea {suspicious.marker_line}): no se pudo "
+                "confirmar como CSS válido; requiere revisión humana (NEEDS_REVIEW)."
+            )
+
+    for css_path, css_text in stylesheet_sources:
+        css = parse_css(css_path, css_text)
         result.stylesheets.append(css)
         if css.custom_properties:
             result.tokens.update(css.custom_properties)
@@ -504,10 +548,10 @@ def analyze_batch(inventory: Inventory, root: Path) -> AnalysisResult:
                     kind="tokens",
                     classification=CLASSIFICATION_OBSERVED,
                     message=(
-                        f"{len(css.custom_properties)} custom properties en `{entry.path}`: "
+                        f"{len(css.custom_properties)} custom properties en `{css_path}`: "
                         + ", ".join(f"`{name}`" for name in list(css.custom_properties)[:8])
                     ),
-                    source=entry.path,
+                    source=css_path,
                 )
             )
 

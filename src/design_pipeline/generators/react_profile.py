@@ -12,6 +12,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from design_pipeline.generators.base import GenerationContext, GenerationResult, Profile
+from design_pipeline.importers.embedded_css import (
+    find_embedded_stylesheets,
+    find_suspicious_css_tail,
+    strip_embedded,
+)
 from design_pipeline.templates import render_component_readme, render_profile_readme
 
 
@@ -49,13 +54,51 @@ class ReactCssProfile(Profile):
         for spec in ctx.specs:
             name = spec["name"]
             source_path = spec["source"]["path"]
-            code = ctx.read_source(source_path)
-            ctx.write(source_path, code)
-            result.add(source_path, "copied", "copia literal del componente de origen")
+            original = ctx.read_source(source_path)
+
+            # Issue #1: el CSS embebido al final del componente (marcador
+            # `/* nombre.css */`) se separa a un archivo .css real; el
+            # JSX/TSX de salida queda compilable.
+            embedded = find_embedded_stylesheets(source_path, original)
+            embedded_by_path = {item.resolved: item for item in embedded}
+            written_embedded: set[str] = set()
+            if embedded:
+                for item in embedded:
+                    if (ctx.source_root / item.resolved).exists():
+                        continue  # existe el archivo real: manda ese
+                    ctx.write(item.resolved, item.css)
+                    written_embedded.add(item.resolved)
+                    result.add(
+                        item.resolved,
+                        "created",
+                        f"CSS embebido extraído de {source_path} (marcador `/* {item.ref} */`)",
+                    )
+                ctx.write(source_path, strip_embedded(original, embedded))
+                result.add(
+                    source_path,
+                    "transformed",
+                    "CSS embebido separado a archivo .css (el bloque crudo no compila en JSX/TSX)",
+                )
+            else:
+                ctx.write(source_path, original)
+                result.add(source_path, "copied", "copia literal del componente de origen")
+
+            # Red de seguridad: un marcador de CSS no separable no se copia
+            # en silencio (issue #1: nada de sintaxis inválida sin avisar).
+            suspicious = find_suspicious_css_tail(original)
+            if suspicious is not None:
+                result.needs_review.append(
+                    f"{name}: posible CSS crudo pegado al final del archivo "
+                    f"(marcador `/* {suspicious.ref} */`, línea {suspicious.marker_line}) "
+                    "que no se pudo separar como CSS válido; el archivo puede no "
+                    "compilar hasta revisarlo (NEEDS_REVIEW)."
+                )
 
             # Hojas de estilo del componente.
             for stylesheet in spec["dependencies"].get("stylesheets", []):
                 resolved = resolve_rel(source_path, stylesheet)
+                if resolved in written_embedded:
+                    continue  # ya escrito desde el bloque embebido
                 if (ctx.source_root / resolved).exists():
                     ctx.copy(resolved)
                     result.add(resolved, "copied", "hoja de estilos del componente")

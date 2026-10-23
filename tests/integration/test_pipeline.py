@@ -252,6 +252,74 @@ def test_generacion_perfil_astro(capsys, tmp_path: Path):
     assert report["verdict"] in {"pass", "pass_with_review"}
 
 
+def test_flujo_css_embebido_cli(capsys, tmp_path: Path):
+    """Issue #1: el CSS embebido al final de un .jsx se extrae y compila.
+
+    Flujo completo por la CLI sobre una exportación cuyos componentes traen su
+    CSS pegado tras un marcador `/* nombre.css */` (sin archivos .css reales).
+    """
+    embedded = (
+        Path(__file__).resolve().parent.parent / "fixtures" / "fixture-embedded-css"
+    )
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    _flow_until_rules(capsys, ws, embedded)
+
+    # Import: los imports de CSS embebido NO son referencias rotas.
+    code, out = run_cli(
+        capsys, "import", str(embedded), "-p", "demo", "-w", str(ws), "--json"
+    )
+    assert code == 0
+    payload = json.loads(out)
+    assert payload["embedded_stylesheets"] == 2
+    assert "./panel.css" not in {r["ref"] for r in json.loads(
+        (ws / "demo" / "inventory.json").read_text("utf-8")
+    )["broken_references"]}
+
+    # Analyze: las hojas embebidas se analizan (antes: 0 hojas de estilo).
+    code, out = run_cli(capsys, "analyze", "-p", "demo", "-w", str(ws), "--json")
+    assert code == 0
+    analysis = json.loads((ws / "demo" / "analysis.json").read_text("utf-8"))
+    assert {"panel.css", "toolbar.css"} <= {c["path"] for c in analysis["stylesheets"]}
+    assert any(
+        "CSS embebido extraído" in f["message"] for f in analysis["findings"]
+    )
+
+    assert run_cli(
+        capsys, "rules", "answer", "--id", "q-001", "--value", "react-css",
+        "-p", "demo", "-w", str(ws),
+    )[0] == 0
+    assert run_cli(
+        capsys, "rules", "approve", "--all", "-p", "demo", "-w", str(ws)
+    )[0] == 0
+    assert run_cli(capsys, "spec", "-p", "demo", "-w", str(ws))[0] == 0
+
+    # Generate: el JSX de salida queda compilable y el CSS sale separado.
+    code, out = run_cli(
+        capsys, "generate", "-p", "demo", "-w", str(ws), "--profile", "react-css"
+    )
+    assert code == 0, out
+    out_dir = ws / "demo" / "output" / "react-css"
+    panel_jsx = (out_dir / "Panel.jsx").read_text("utf-8")
+    assert 'import "./panel.css";' in panel_jsx
+    assert "/* panel.css */" not in panel_jsx
+    assert panel_jsx.rstrip().endswith("}")
+    assert ".panel {" in (out_dir / "panel.css").read_text("utf-8")
+
+    # Validate: sin FAIL; las referencias resuelven (las únicas rotas son las
+    # heredadas del export que no se pudieron separar) y la fuente sigue intacta.
+    code, out = run_cli(capsys, "validate", "-p", "demo", "-w", str(ws), "--json")
+    assert code == 0
+    report = json.loads(out)
+    assert report["summary"]["FAIL"] == 0
+    references = next(c for c in report["checks"] if c["id"] == "references")
+    assert references["status"] != "FAIL"
+    # Toda referencia rota detectada es heredada (ninguna nueva introducida).
+    assert references["evidence"]["broken"] == references["evidence"]["inherited"]
+    isolation = next(c for c in report["checks"] if c["id"] == "isolation")
+    assert isolation["status"] == "PASS"
+
+
 def test_skills_add_no_ejecuta_scripts(capsys, tmp_path: Path):
     """Importar una skill con scripts deja evidencia pero no ejecuta nada."""
     ws = tmp_path / "ws"

@@ -22,6 +22,12 @@ from design_pipeline.generators.astro_converter import (
 )
 from design_pipeline.generators.base import GenerationContext, GenerationResult, Profile
 from design_pipeline.generators.react_profile import resolve_rel, strip_extension
+from design_pipeline.importers.embedded_css import (
+    EmbeddedStylesheet,
+    find_embedded_stylesheets,
+    find_suspicious_css_tail,
+    strip_embedded,
+)
 from design_pipeline.templates import render_component_readme, render_profile_readme
 
 
@@ -36,18 +42,35 @@ class AstroCssProfile(Profile):
     def generate(self, ctx: GenerationContext) -> GenerationResult:
         result = GenerationResult(profile=self.id)
 
-        # Pasada 1: leer y clasificar.
+        # Pasada 1: leer, separar CSS embebido (issue #1) y clasificar.
         codes: dict[str, str] = {}
         tentative: dict[str, str] = {}
+        embedded_by_component: dict[str, dict[str, EmbeddedStylesheet]] = {}
         for spec in ctx.specs:
             source_path = spec["source"]["path"]
-            code = ctx.read_source(source_path)
-            codes[source_path] = code
-            mode, reasons = classify(code)
+            raw = ctx.read_source(source_path)
+            # Red de seguridad: chequear la cola sospechosa sobre el texto
+            # original, antes de separar el CSS embebido (issue #1).
+            suspicious = find_suspicious_css_tail(raw)
+            embedded = find_embedded_stylesheets(source_path, raw)
+            if embedded:
+                embedded_by_component[source_path] = {
+                    item.resolved: item for item in embedded
+                }
+                raw = strip_embedded(raw, embedded)
+            codes[source_path] = raw
+            mode, reasons = classify(raw)
             tentative[source_path] = "astro" if mode == "static" else "tsx"
             if reasons:
                 result.needs_review.append(
                     f"{source_path}: isla React — {'; '.join(reasons)}"
+                )
+            if suspicious is not None:
+                result.needs_review.append(
+                    f"{source_path}: posible CSS crudo pegado al final del archivo "
+                    f"(marcador `/* {suspicious.ref} */`, línea {suspicious.marker_line}) "
+                    "que no se pudo separar como CSS válido; revisar antes de integrar "
+                    "(NEEDS_REVIEW)."
                 )
 
         # Pasada 2: intentar conversiones; los fallos caen a isla.
@@ -116,9 +139,24 @@ class AstroCssProfile(Profile):
                     "manual de @astrojs/react) en el proyecto de destino."
                 )
 
+            # CSS embebido separado: se escribe como hoja .css real (issue #1).
+            written_embedded: set[str] = set()
+            for resolved, item in embedded_by_component.get(source_path, {}).items():
+                if (ctx.source_root / resolved).exists():
+                    continue  # existe el archivo real: manda ese
+                ctx.write(resolved, item.css)
+                written_embedded.add(resolved)
+                result.add(
+                    resolved,
+                    "created",
+                    f"CSS embebido extraído de {source_path} (marcador `/* {item.ref} */`)",
+                )
+
             # Hojas de estilo y recursos (mismo criterio que react-css).
             for stylesheet in spec["dependencies"].get("stylesheets", []):
                 resolved = resolve_rel(source_path, stylesheet)
+                if resolved in written_embedded:
+                    continue  # ya escrito desde el bloque embebido
                 if (ctx.source_root / resolved).exists():
                     ctx.copy(resolved)
                     result.add(resolved, "copied", "hoja de estilos del componente")

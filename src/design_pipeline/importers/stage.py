@@ -40,6 +40,7 @@ def run_import(project: Project, source: Path) -> dict[str, Any]:
         "files": len(inventory.files),
         "duplicates": len(inventory.duplicate_groups),
         "broken_references": len(inventory.broken_references),
+        "embedded_stylesheets": len(inventory.embedded_stylesheets),
         "unanalyzed": len(inventory.unanalyzed),
         "report": "reports/IMPORT-REPORT.md",
     }
@@ -73,6 +74,7 @@ def load_inventory(project: Project) -> Inventory | None:
         duplicate_groups=data.get("duplicate_groups", []),
         broken_references=data.get("broken_references", []),
         external_references=data.get("external_references", []),
+        embedded_stylesheets=data.get("embedded_stylesheets", []),
         unanalyzed=data.get("unanalyzed", []),
         stats=data.get("stats", {}),
     )

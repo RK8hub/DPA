@@ -221,6 +221,15 @@ Estas limitaciones son reales y están declaradas también en los informes:
   diseño: analiza archivos con patrones deterministas.
 - **No convierte a Tailwind.** Los perfiles generan CSS puro; la conversión a
   utilidades queda como trabajo manual o asistido y se documenta como pendiente.
+- **CSS embebido: separado cuando se puede confirmar, `NEEDS_REVIEW` cuando
+  no.** Si una exportación trae el CSS pegado al final de un componente tras
+  un marcador `/* nombre.css */`, el pipeline lo detecta, lo analiza como hoja
+  de estilo y `generate` lo separa a un archivo `.css` real (el JSX/TSX de
+  salida queda compilable y el import resuelve). Pero si el bloque no se puede
+  confirmar como CSS puro (llaves desbalanceadas, código JS mezclado), **no**
+  se transforma: queda como limitación del análisis y `NEEDS_REVIEW` en las
+  notas de generación para revisión humana. Nunca se copia sintaxis inválida
+  en silencio.
 - **Pruebas responsive y comparación visual: siempre `SKIPPED`.** No hay
   ejecutor de navegador implementado ni instalado. Su ausencia **no** garantiza
   que la salida sea responsive ni fiel visualmente.

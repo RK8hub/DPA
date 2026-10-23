@@ -140,3 +140,50 @@ def test_astro_css_conviene_estaticos_y_deja_islas(tmp_path: Path):
     assert (output_dir / "components/Stat/Stat.css").exists()
     # Las islas quedan documentadas para revisión.
     assert any("isla React" in item for item in result.needs_review)
+
+
+# ---------------------------------------------------------------------------
+# CSS embebido al final de los componentes (issue #1)
+# ---------------------------------------------------------------------------
+
+EMBEDDED_FIXTURE = (
+    Path(__file__).resolve().parent.parent / "fixtures" / "fixture-embedded-css"
+)
+
+
+def test_react_css_separa_el_css_embebido(tmp_path: Path):
+    project = prepared_project(tmp_path, EMBEDDED_FIXTURE)
+    _profile, result, output_dir = run_generate(project, "react-css")
+
+    # El JSX de salida NO contiene el bloque CSS crudo (sintaxis inválida).
+    panel_jsx = (output_dir / "Panel.jsx").read_text()
+    assert 'import "./panel.css";' in panel_jsx
+    assert "/* panel.css */" not in panel_jsx
+    assert "#101828" not in panel_jsx
+    assert panel_jsx.rstrip().endswith("}")
+
+    # La hoja embebida sale como archivo .css real junto al componente.
+    panel_css = (output_dir / "panel.css").read_text()
+    assert ".panel {" in panel_css
+    assert any(
+        f.path == "panel.css" and "extraído" in f.note for f in result.files
+    )
+
+    # Lo no separable (Broken) no se transforma: queda en needs_review.
+    assert any("Broken" in item and "NEEDS_REVIEW" in item for item in result.needs_review)
+    assert 'import "./broken.css";' in (output_dir / "Broken.jsx").read_text()
+
+
+def test_astro_css_separa_el_css_embebido(tmp_path: Path):
+    project = prepared_project(tmp_path, EMBEDDED_FIXTURE)
+    _profile, result, output_dir = run_generate(project, "astro-css")
+
+    # Toolbar es interactivo (onClick) → isla React sin CSS crudo + wrapper.
+    toolbar_jsx = (output_dir / "Toolbar.jsx").read_text()
+    assert "/* toolbar.css */" not in toolbar_jsx
+    assert 'import "./toolbar.css";' in toolbar_jsx
+    assert (output_dir / "toolbar.css").exists()
+    assert "client:load" in (output_dir / "Toolbar.astro").read_text()
+    # Panel también queda con su CSS separado (convirta a .astro o no).
+    assert (output_dir / "panel.css").exists()
+    assert any("extraído" in f.note for f in result.files if f.path == "panel.css")

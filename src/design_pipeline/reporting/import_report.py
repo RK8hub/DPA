@@ -48,6 +48,23 @@ def render_import_report(inventory: Inventory) -> str:
     else:
         lines.append("- Sin referencias locales rotas detectadas.")
 
+    lines += ["", "## CSS embebido en componentes", ""]
+    if inventory.embedded_stylesheets:
+        lines.append("| Componente | Referencia | Hoja resuelta | Línea |")
+        lines.append("| --- | --- | --- | ---: |")
+        for embedded in inventory.embedded_stylesheets:
+            lines.append(
+                f"| `{embedded['component']}` | `{embedded['ref']}` | "
+                f"`{embedded['resolved']}` | {embedded['marker_line']} |"
+            )
+        lines.append("")
+        lines.append(
+            "- No son referencias rotas: el CSS viene pegado al final del componente "
+            "tras el marcador y se analiza/extrae como hoja de estilo."
+        )
+    else:
+        lines.append("- Ninguno detectado.")
+
     lines += ["", "## Referencias externas (paquetes o URLs)", ""]
     if inventory.external_references:
         seen: dict[tuple[str, str], None] = {}

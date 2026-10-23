@@ -124,7 +124,7 @@ JSON en stdout (UTF-8, indentado, sin ASCII-escape). Resumen por comando:
 | `init` | `project`, `path`, `workspace`, `missing_dependencies[]` |
 | `doctor` | `ok`, `design_pipeline_version`, `checks[]` (`name`, `ok`, `required`, `detail`, `remedy`) |
 | `status` | `project`, `path`, `source`, `current_stage`, `stages[]`, `decisions_pending[]`, `last_validation`, `recent_runs[]`, `just_marked_stale[]` |
-| `import` | `project`, `source`, `files`, `duplicates`, `broken_references`, `unanalyzed`, `report` |
+| `import` | `project`, `source`, `files`, `duplicates`, `broken_references`, `embedded_stylesheets`, `unanalyzed`, `report` |
 | `analyze` | `project`, `components[]` (nombres), `findings`, `uncertainties`, `limitations` |
 | `rules init` | `project`, `mode`, `detail` |
 | `rules answer` | `project`, `answered[]`, `rules_created[]`, `errors[]` |

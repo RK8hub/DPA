@@ -12,6 +12,10 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from design_pipeline.importers.embedded_css import (
+    EmbeddedStylesheet,
+    find_embedded_stylesheets,
+)
 from design_pipeline.utils import (
     format_bytes,
     iso_now,
@@ -62,6 +66,7 @@ class Inventory:
     duplicate_groups: list[dict[str, Any]] = field(default_factory=list)
     broken_references: list[dict[str, Any]] = field(default_factory=list)
     external_references: list[dict[str, Any]] = field(default_factory=list)
+    embedded_stylesheets: list[dict[str, Any]] = field(default_factory=list)
     unanalyzed: list[dict[str, Any]] = field(default_factory=list)
     stats: dict[str, Any] = field(default_factory=dict)
 
@@ -173,6 +178,20 @@ def build_inventory(
 
     # Referencias internas/externas y rotas.
     known = {entry.path for entry in inventory.files}
+    # Textos de componentes, cacheados sólo si un import de estilos no resuelve
+    # (para detectar CSS embebido al final del archivo, issue #1).
+    component_texts: dict[str, str] = {}
+
+    def _component_text(entry: FileEntry) -> str:
+        if entry.path not in component_texts:
+            try:
+                component_texts[entry.path] = (source / entry.path).read_text(
+                    encoding="utf-8", errors="replace"
+                )
+            except OSError:  # pragma: no cover - permisos raros
+                component_texts[entry.path] = ""
+        return component_texts[entry.path]
+
     for entry in inventory.files:
         for ref in entry.references:
             if _is_external(ref):
@@ -189,6 +208,24 @@ def build_inventory(
                 )
                 continue
             if not _resolves_to_known(resolved, known):
+                # Issue #1: el CSS puede venir embebido al final del propio
+                # componente tras un marcador `/* nombre.css */`. En ese caso
+                # el import NO está roto: se registra la hoja embebida.
+                embedded = (
+                    _embedded_covering(_component_text(entry), entry.path, resolved)
+                    if entry.category == "component"
+                    else None
+                )
+                if embedded is not None:
+                    inventory.embedded_stylesheets.append(
+                        {
+                            "component": entry.path,
+                            "ref": ref,
+                            "resolved": embedded.resolved,
+                            "marker_line": embedded.marker_line,
+                        }
+                    )
+                    continue
                 inventory.broken_references.append(
                     {"from": entry.path, "ref": ref, "reason": "archivo no encontrado"}
                 )
@@ -206,9 +243,22 @@ def build_inventory(
         "duplicates": len(inventory.duplicate_groups),
         "broken_references": len(inventory.broken_references),
         "external_references": len(inventory.external_references),
+        "embedded_stylesheets": len(inventory.embedded_stylesheets),
         "unanalyzed": len(inventory.unanalyzed),
     }
     return inventory
+
+
+def _embedded_covering(
+    text: str, component_path: str, resolved: str
+) -> EmbeddedStylesheet | None:
+    """¿Hay un bloque CSS embebido en ``text`` que resuelve a ``resolved``?"""
+    if not text:
+        return None
+    for embedded in find_embedded_stylesheets(component_path, text):
+        if embedded.resolved == resolved:
+            return embedded
+    return None
 
 
 def _resolve_relative(from_rel: str, ref: str) -> str | None:

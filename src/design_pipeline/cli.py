@@ -154,6 +154,7 @@ def cmd_import(args: argparse.Namespace) -> int:
     else:
         print(f"Importados {summary['files']} archivos desde {source}")
         print(f"Duplicados: {summary['duplicates']} | Referencias rotas: {summary['broken_references']}"
+              f" | CSS embebido: {summary['embedded_stylesheets']}"
               f" | No analizados: {summary['unanalyzed']}")
         print(f"Informe: {project.paths.reports_dir / 'IMPORT-REPORT.md'}")
         print(f"\nSiguiente paso: design-pipeline analyze --project {project.name}")
